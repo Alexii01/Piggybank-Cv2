@@ -5,19 +5,6 @@
 #include <stdio.h>
 #include <time.h>
 
-/*
-    Expected experience:
-        user inputs the correct password --> It works
-
-        Confirm with hash.
-        Crypt with raw password.
-
-    Custom Return codes:
-        0 = OK
-        1 = Unknown (printed out)
-        20 = Cipher failure
-
-*/
 struct data{
     uint64_t main;
     uint64_t extra;
@@ -44,7 +31,7 @@ int parse_args(int argc, char **argv, int verb){
     return 1;
 }
 
-// The difference from digest_crypt_pass is that Ciphers are used here, not Digests
+// Uses openssl Ciphers to encrypt or decrypt input
 int crypt(const void *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *alg, int direction, uint8_t **output){
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
@@ -52,13 +39,28 @@ int crypt(const void *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *al
     if(!ctx) return 20;
 
     uint8_t *value = (uint8_t*) calloc(1, ((inputlen/16) + 1) * EVP_MAX_BLOCK_LENGTH);
+
+    if(!value){
+        printf("Cipher error\n");
+        EVP_CIPHER_CTX_free(ctx);
+        return 20;
+    }
+
+    uint8_t *key = (uint8_t*) malloc(33);
+
+    if(!key){
+        printf("Cipher error\n");
+        EVP_CIPHER_CTX_free(ctx);
+        free(value);
+        return 20;
+    }
+
     int len = 0;
 
-    EVP_CipherInit_ex2(ctx, alg, NULL, NULL, direction, NULL);
+    if(!EVP_CipherInit_ex2(ctx, alg, NULL, NULL, direction, NULL)) goto err;
 
     OPENSSL_assert(EVP_CIPHER_CTX_get_key_length(ctx) == 16);
 
-    uint8_t *key = (uint8_t*) malloc(33);
     memcpy(key, keyptr, 32);
 
     if(!EVP_CipherInit_ex2(ctx, alg, key, NULL, direction, NULL)) goto err;
@@ -80,7 +82,7 @@ int crypt(const void *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *al
         return 20;
 }
 
-// The difference from crypt is that Digests are used here, not Ciphers
+// Uses openssl Digests to encrypt input
 int digest_crypt(unsigned char *input, int inlen, const EVP_MD *alg, uint8_t **output){
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
@@ -88,6 +90,9 @@ int digest_crypt(unsigned char *input, int inlen, const EVP_MD *alg, uint8_t **o
     if(!mdctx) return 20;
 
     uint8_t *md_value = (uint8_t* ) calloc(1, EVP_MAX_MD_SIZE);
+
+    if(!md_value) goto err;
+
     unsigned int md_len = 0;
 
     if(!EVP_DigestInit_ex2(mdctx, alg, NULL)) goto err;
@@ -119,19 +124,11 @@ int read_pass(char *output, char *add){
     }
 }
 
-int file_gen(){
-    //TODO: Seperate the file writing stuff into a  seperate file_write function. Create a file_read function
+// Encrypts data and writes it
+int file_write(struct data *sample_data, uint8_t *pass){
+    uint8_t *encdata, *hash;
 
-
-    //TODO: add date here------------v
-    struct data sample_data = {0, 0, 0, ""};
-
-    uint8_t pass[33], *encdata, *hash;
-
-    while(read_pass((char*) pass, "for file encryption"))
-        perror("Couldn't read password (try again or fix the underlying problem)");
-    //
-    int result = crypt(&sample_data, sizeof(sample_data), pass, EVP_aes_128_cbc(), 1, &encdata);
+    int result = crypt(sample_data, sizeof(struct data), pass, EVP_aes_128_cbc(), 1, &encdata);
 
     if(result){
         free(encdata);
@@ -140,24 +137,23 @@ int file_gen(){
 
     result = digest_crypt(encdata, sizeof(encdata), EVP_sha256(), &hash);
 
-    FILE *fileptr = fopen("data.bin", "wb");
-
-    if(fileptr){
-        if(!fwrite(hash, 32, 1, fileptr)) goto writerr;
-        if(!fwrite(encdata, strlen((char*)encdata), 1, fileptr)) goto writerr;
-    } else {
-        perror("Couldn't open 'data.bin'");
+    if(result){
         free(encdata);
         free(hash);
-        return 1;
+        return 20;
     }
+
+    FILE *fileptr = fopen("data.bin", "wb");
+    if(!fileptr) goto writerr;
+
+    if(!fwrite(hash, 32, 1, fileptr)) goto writerr;
+    if(!fwrite(encdata, strlen((char*)encdata), 1, fileptr)) goto writerr;
 
     fclose(fileptr);
     free(encdata);
     free(hash);
 
     return 0;
-
 
     writerr:
         perror("Couldn't interact with 'data.bin'");
@@ -167,6 +163,19 @@ int file_gen(){
         free(hash);
 
         return 1;
+}
+
+int file_gen(){
+    //TODO: add date here------------v
+    struct data sample_data = {0, 0, 0, ""};
+    uint8_t pass[33];
+
+    while(read_pass((char*) pass, "for file encryption"))
+        perror("Couldn't read password (try again or fix the underlying problem)");
+
+    file_write(&sample_data, pass);
+
+    return 0;
 }
 
 int main(int argc, char **argv){
@@ -194,4 +203,3 @@ int main(int argc, char **argv){
 
     return 0;
 }
-

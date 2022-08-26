@@ -3,7 +3,7 @@ all: comp run
 comp:
 	@gcc -fsanitize=address -static-libasan  -Wall -L/usr/lib -lcrypto main.c -o main -g
 
-cleancomp:
+releasecomp:
 	@gcc -Wall -L/usr/lib -lcrypto main.c -o main
 
 gdb:
