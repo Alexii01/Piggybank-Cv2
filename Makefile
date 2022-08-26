@@ -8,6 +8,7 @@ cleancomp:
 
 gdb:
 	@gcc -Wall -Wextra -pedantic -L/usr/lib -g main.c -o main -lcrypto -lm
+	-@rm data.bin
 	-gdb --args ./main
 
 run:

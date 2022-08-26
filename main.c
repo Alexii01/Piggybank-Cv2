@@ -6,8 +6,6 @@
 #include <time.h>
 
 /*
-    TODO: Look through the gLitCHY part and find why pointers don't work. Dynamic memory?
-
     Expected experience:
         user inputs the correct password --> It works
 
@@ -23,8 +21,8 @@
 struct data{
     uint64_t main;
     uint64_t extra;
-    char last_date[20];
     uint64_t last_contribution;
+    char last_date[16];
 };
 
 int parse_args(int argc, char **argv, int verb){
@@ -47,21 +45,21 @@ int parse_args(int argc, char **argv, int verb){
 }
 
 // The difference from digest_crypt_pass is that Ciphers are used here, not Digests
-int crypt(uint8_t *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *alg, int direction, uint8_t **output){
+int crypt(const void *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *alg, int direction, uint8_t **output){
 
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
 
     if(!ctx) return 20;
 
-    uint8_t *value = (uint8_t*) calloc(1, EVP_MAX_MD_SIZE + EVP_MAX_BLOCK_LENGTH);
+    uint8_t *value = (uint8_t*) calloc(1, ((inputlen/16) + 1) * EVP_MAX_BLOCK_LENGTH);
     int len = 0;
 
     EVP_CipherInit_ex2(ctx, alg, NULL, NULL, direction, NULL);
 
     OPENSSL_assert(EVP_CIPHER_CTX_get_key_length(ctx) == 16);
 
-    uint8_t *key = (uint8_t*) malloc(17);
-    memcpy(key, keyptr, 16);
+    uint8_t *key = (uint8_t*) malloc(33);
+    memcpy(key, keyptr, 32);
 
     if(!EVP_CipherInit_ex2(ctx, alg, key, NULL, direction, NULL)) goto err;
     if(!EVP_CipherUpdate(ctx, value, &len, input, inputlen)) goto err;
@@ -83,7 +81,7 @@ int crypt(uint8_t *input, int inputlen, uint8_t *keyptr, const EVP_CIPHER *alg, 
 }
 
 // The difference from crypt is that Digests are used here, not Ciphers
-int digest_crypt_pass(unsigned char *pass, const EVP_MD *alg, uint8_t **output){
+int digest_crypt(unsigned char *input, int inlen, const EVP_MD *alg, uint8_t **output){
 
     EVP_MD_CTX *mdctx = EVP_MD_CTX_new();
 
@@ -93,7 +91,7 @@ int digest_crypt_pass(unsigned char *pass, const EVP_MD *alg, uint8_t **output){
     unsigned int md_len = 0;
 
     if(!EVP_DigestInit_ex2(mdctx, alg, NULL)) goto err;
-    if(!EVP_DigestUpdate(mdctx, pass, 16)) goto err;
+    if(!EVP_DigestUpdate(mdctx, input, inlen)) goto err;
     if(!EVP_DigestFinal_ex(mdctx, md_value, &md_len)) goto err;
 
     EVP_MD_CTX_free(mdctx);
@@ -111,7 +109,7 @@ int digest_crypt_pass(unsigned char *pass, const EVP_MD *alg, uint8_t **output){
 
 int read_pass(char *output, char *add){
     while(1){
-        printf("Enter password %s (max length 16): ", add);
+        printf("Enter password %s (max length 32): ", add);
 
         if(!fgets(output, 17, stdin))
             return 1;
@@ -121,19 +119,53 @@ int read_pass(char *output, char *add){
     }
 }
 
-int gen_file(){
-    //TODO: add date here------------v
-    struct data sample_data = {0, 0, "", 0};
+int file_gen(){
+    //TODO: Seperate the file writing stuff into a  seperate file_write function. Create a file_read function
 
-    uint8_t pass[17];
+
+    //TODO: add date here------------v
+    struct data sample_data = {0, 0, 0, ""};
+
+    uint8_t pass[33], *encdata, *hash;
 
     while(read_pass((char*) pass, "for file encryption"))
         perror("Couldn't read password (try again or fix the underlying problem)");
+    //
+    int result = crypt(&sample_data, sizeof(sample_data), pass, EVP_aes_128_cbc(), 1, &encdata);
+
+    if(result){
+        free(encdata);
+        return 20;
+    }
+
+    result = digest_crypt(encdata, sizeof(encdata), EVP_sha256(), &hash);
+
+    FILE *fileptr = fopen("data.bin", "wb");
+
+    if(fileptr){
+        if(!fwrite(hash, 32, 1, fileptr)) goto writerr;
+        if(!fwrite(encdata, strlen((char*)encdata), 1, fileptr)) goto writerr;
+    } else {
+        perror("Couldn't open 'data.bin'");
+        free(encdata);
+        free(hash);
+        return 1;
+    }
+
+    fclose(fileptr);
+    free(encdata);
+    free(hash);
 
     return 0;
 
+
     writerr:
         perror("Couldn't interact with 'data.bin'");
+
+        fclose(fileptr);
+        free(encdata);
+        free(hash);
+
         return 1;
 }
 
@@ -152,7 +184,7 @@ int main(int argc, char **argv){
         perror("Error on read 'data.bin' ");
         printf("Generating file\n");
 
-        result = gen_file();
+        result = file_gen();
         if(result) return result;
 
         printf("Data file has been successfully created. Exiting.\n");
