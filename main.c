@@ -11,10 +11,11 @@ struct data{
 };
 
 #ifdef _WIN32
-#include <conio.h>
+    //#include <conio.h>
+    #define clrscr() system("cls");
 #else
-#include <stdio.h>
-#define clrscr() system("clear");
+    #include <stdio.h>
+    #define clrscr() system("clear");
 #endif
 
 #if 1
@@ -81,12 +82,26 @@ uint64_t exp_contribution(struct tm start, struct tm end){
 }
 
 void print_digest(struct data dataptr, struct tm now){
-    printf("%08.2lf  |  %08.2lf\n%08.2lf  |  %08.2lf\n", ((double) dataptr.main) / 100, ((double) exp_balance(dataptr.start_date, now)) / 100, ((double) dataptr.last_contribution) / 100, ((double) exp_contribution(dataptr.start_date, now)) / 100);
-    //printf("Read aid:\n\tbalance:expected balance\n\tleft to contribute:expected contribution\n");
+    printf("%08.2lf  |  %08.2lf\n%08.2lf  |  %08.2lf\n",
+        ((double) dataptr.main) / 100,
+        ((double) exp_balance(dataptr.start_date, now)) / 100,
+        ((double) dataptr.last_contribution) / 100,
+        ((double) exp_contribution(dataptr.start_date, now)) / 100);
 }
 
-void print_full(struct data dataptr){
-
+void print_full(struct data dataptr, struct tm now){
+    printf("Current balance : %08.2lf\n"
+        "Expected balance : %08.2lf\n"
+        "Difference : %08.2lf\n"
+        "Today's contribution : %08.2lf\n"
+        "Expected contribution : %08.2lf\n"
+        "Difference : %08.2lf\n",
+        ((double) dataptr.main) / 100,
+        ((double) exp_balance(dataptr.start_date, now)) / 100,
+        (((double) dataptr.main) / 100) - (((double) exp_balance(dataptr.start_date, now)) / 100),
+        ((double) dataptr.last_contribution) / 100,
+        ((double) exp_contribution(dataptr.start_date, now)) / 100,
+        (((double) dataptr.last_contribution) / 100) - (((double) exp_contribution(dataptr.start_date, now)) / 100));
 }
 
 int bank_operation(uint64_t *ptr, char * valname){
@@ -110,25 +125,28 @@ void delete_data(char *realpass){
 
     char supppass[17];
     read_pass(supppass, "to confirm data deletion");;
-    if(strcmp(supppass, realpass)) return NULL;
+    if(!strcmp(supppass, realpass)){
 
-    printf("Correct password. The operation will now start.\n");
+        printf("Correct password. The operation will now start.\n");
 
-    FILE *fptr = fopen("data.bin", "wb");
-    if(!fptr) return NULL;
+        FILE *fptr = fopen("data.bin", "wb");
+        if(fptr){
+            uint8_t val;
 
-    uint8_t val;
+            for(int i=0; i<160; i++){
+                val = (uint8_t) (rand() % 255);
+                fwrite(&val, 1, 1, fptr);
+            }
 
-    for(int i=0; i<160; i++){
-        val = (uint8_t) (rand() % 255);
-        fwrite(&val, 1, 1, fptr);
+            remove("data.bin");
+
+            printf("Delete finished successfully\n");
+        } else {
+            printf("No file was found.\n");
+        }
+    } else {
+        wait_clrscr("Wrong password\n");
     }
-
-    remove("data.bin");
-
-    printf("Delete finished successfully\n");
-
-    wait_clrscr("");
 }
 
 int main(int argc, char **argv){
@@ -181,7 +199,9 @@ int main(int argc, char **argv){
                 break;
 
             case 12:
-                //See full info (in groups!!!)
+                clrscr();
+                print_full(currdata, now);
+                wait_clrscr("");
                 break;
 
             case 2:

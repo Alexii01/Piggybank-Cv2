@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <errno.h>
 
+int read_pass(char *output, char *add);
+
 void print_hex(uint8_t * string, uint8_t len, uint8_t blocksize, uint8_t sep, char *blocksep, uint8_t last){
     int iter;
 
@@ -152,17 +154,17 @@ int file_read(struct data *output, uint8_t *pass){
     if(!fread(hash, 32, 1, fileptr)) goto readerr;
     printf("Read hash\n");
 
-    if(!fread(encdata, 144, 1, fileptr)) goto readerr;
+    if(!fread(encdata, 112, 1, fileptr)) goto readerr;
     printf("Read encoded data:\n\t");
-    print_hex(encdata, 144, 16, ' ',  "\n\t", '\r');
+    print_hex(encdata, 112, 16, ' ',  "\n\t", '\r');
 
     fclose(fileptr);
 
-    result = crypt(encdata, 144, pass, EVP_aes_128_cbc(), 0, &data, &outlen);
+    result = crypt(encdata, 112, pass, EVP_aes_128_cbc(), 0, &data, &outlen);
     if(result) goto cipherr;
 
     printf("\rDecoded data:\n\t");
-    print_hex(data, 144, 16, ' ',  "\n\t", '\r');
+    print_hex(data, 112, 16, ' ',  "\n\t", '\r');
 
     result = digest_crypt(data, sizeof(struct data), EVP_sha256(), &genhash);
     if(result) goto cipherr;

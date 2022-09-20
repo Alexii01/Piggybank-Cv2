@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <errno.h>
 
+int read_pass(char *output, char *add);
 
 // Uses openssl Ciphers to encrypt or decrypt input
 uint64_t crypt(uint8_t *input, int inputlen, const uint8_t *keyptr, const EVP_CIPHER *alg, int direction, uint8_t **output, uint8_t *outlen){
@@ -115,12 +116,11 @@ int file_read(struct data *output, uint8_t *pass){
     if(!fileptr) goto readerr;
 
     if(!fread(hash, 32, 1, fileptr)) goto readerr;
-    if(!fread(encdata, 144, 1, fileptr)) goto readerr;
-    if(ferror(fileptr)) goto readerr;
+    if(!fread(encdata, 112, 1, fileptr)) goto readerr;
 
     fclose(fileptr);
 
-    result = crypt(encdata, 144, pass, EVP_aes_128_cbc(), 0, &data, &outlen);
+    result = crypt(encdata, 112, pass, EVP_aes_128_cbc(), 0, &data, &outlen);
     if(result) goto cipherr;
 
     result = digest_crypt(data, sizeof(struct data), EVP_sha256(), &genhash);
